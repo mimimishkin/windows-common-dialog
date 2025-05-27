@@ -1,12 +1,12 @@
 use crate::ChooserDialogError;
 use std::ops::Deref;
 pub use windows::core::Result as WinRes;
-use windows::core::{BOOL, GUID, HRESULT, HSTRING, PWSTR};
-use windows::Win32::Foundation::{ERROR_CANCELLED, ERROR_PATH_NOT_FOUND, HMODULE, HWND, LPARAM, RECT, S_FALSE, S_OK, TRUE};
+use windows::core::{GUID, HRESULT, HSTRING, PWSTR};
+use windows::Win32::Foundation::{ERROR_CANCELLED, ERROR_PATH_NOT_FOUND, HMODULE, S_FALSE, S_OK};
 use windows::Win32::System::Com::{CoInitializeEx, CoTaskMemFree, CoUninitialize, COINIT, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE};
 use windows::Win32::System::SystemServices::{SFGAO_FOLDER, SFGAO_STREAM};
 use windows::Win32::UI::Shell::{BHID_EnumItems, BHID_SFUIObject, IEnumShellItems, IShellItem, IShellLinkW, PathIsRelativeW, SHCreateItemFromParsingName, SHCreateShellItem, SHGetKnownFolderPath, KF_FLAG_DEFAULT, SIGDN, SIGDN_DESKTOPABSOLUTEPARSING, SIGDN_PARENTRELATIVE, SIGDN_PARENTRELATIVEEDITING};
-use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, GetWindowRect, GetWindowTextLengthW, GetWindowTextW, LoadStringW};
+use windows::Win32::UI::WindowsAndMessaging::LoadStringW;
 
 pub trait ExtractName {
     fn get_display_name(&self, name_type: SIGDN) -> WinRes<HSTRING>;
@@ -35,7 +35,7 @@ impl ExtractName for IShellItem {
 
 pub const HRESULT_CANCELLED: HRESULT = ERROR_CANCELLED.to_hresult();
 
-pub fn with_com<T, F: FnOnce() -> WinRes<T>>(f: F) -> WinRes<T> { unsafe {
+pub fn with_com<T, F: FnOnce() -> T>(f: F) -> T { unsafe {
     let init_com = |dw_co_init: COINIT| -> bool {
         match CoInitializeEx(None, dw_co_init) {
             // Successful local initialization (S_OK) or was already initialized
@@ -157,70 +157,8 @@ impl TypedItem for IShellItem {
 
 impl From<windows::core::Error> for ChooserDialogError {
     fn from(err: windows::core::Error) -> Self {
-        ChooserDialogError::Generic(err.message())
+        ChooserDialogError(err.message())
     }
-}
-
-#[derive(Debug)]
-struct FindWindowInfo<'a> {
-    hwnd: HWND,
-    title: Option<&'a HSTRING>,
-    buffer: &'a mut [u16],
-    coords: (i32, i32, i32, i32),
-    error: u32
-}
-
-extern "system" fn find_window_with_proc(hwnd: HWND, lparam: LPARAM) -> BOOL { unsafe {
-    let info = &mut *(lparam.0 as *mut FindWindowInfo);
-    
-    if let Some(title) = info.title {
-        let title_len = title.len();
-        let len = GetWindowTextLengthW(hwnd) as usize;
-        if len != title_len {
-            return TRUE;
-        }
-        if title_len != 0 && GetWindowTextW(hwnd, info.buffer) == 0 {
-            return TRUE;
-        }
-        if title.deref() != &info.buffer[..len] {
-            return TRUE;
-        }
-    }
-    
-    let mut rect = RECT::default();
-    let _ = GetWindowRect(hwnd, &mut rect);
-
-    let target = info.coords;
-    let new_error = rect.left.abs_diff(target.0) + rect.top.abs_diff(target.1) + rect.right.abs_diff(target.2) + rect.bottom.abs_diff(target.3);
-    if new_error < info.error { 
-        info.hwnd = hwnd;
-        info.error = new_error;
-    }
-    
-    TRUE
-} }
-
-pub fn find_window_with(title: Option<&HSTRING>, x: i32, y: i32, width: i32, height: i32) -> WinRes<HWND> {
-    let mut info = FindWindowInfo {
-        hwnd: HWND::default(),
-        title,
-        buffer: &mut vec![0u16; title.map_or(0, |t| t.len() + 1)],
-        coords: (x, y, x + width, y + height),
-        error: u32::MAX
-    };
-    
-    let res = unsafe { EnumWindows(Some(find_window_with_proc), LPARAM(&mut info as *mut _ as _)) };
-    if info.hwnd.is_invalid() { 
-        // not found
-        return Err(res.unwrap_err());
-    }
-    
-    // require strict match when we don't know the title
-    if title.is_none() && info.error != 0 {
-        return Err(res.unwrap_err());
-    }
-    
-    Ok(info.hwnd)
 }
 
 pub fn known_folder_path(id: &GUID) -> WinRes<String> { unsafe {

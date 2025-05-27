@@ -1,5 +1,6 @@
-use crate::win::utils::{create_item, create_item_in, load_string, ExtractName, LinkTarget, TypedItem, WinRes, HRESULT_CANCELLED};
-use crate::win::{WinChooserDialogParams, WinFileFilter};
+use crate::dialog::win::file_filter::WinFileFilter;
+use crate::dialog::win::params::WinChooserDialogParams;
+use crate::dialog::win::utils::{create_item, create_item_in, load_string, ExtractName, LinkTarget, TypedItem, WinRes, HRESULT_CANCELLED};
 use crate::ChoosingMode::*;
 use std::cell::RefCell;
 use std::ops::{Deref, DerefMut};

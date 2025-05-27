@@ -1,4 +1,4 @@
-use crate::win::WinFileFilter;
+use crate::dialog::win::WinFileFilter;
 use crate::ChoosingMode;
 use windows::core::{GUID, HSTRING};
 use windows::Win32::Foundation::HWND;

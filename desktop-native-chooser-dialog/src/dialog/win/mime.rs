@@ -1,4 +1,4 @@
-use crate::win::utils::WinRes;
+use crate::dialog::win::utils::WinRes;
 use std::collections::HashMap;
 use windows_registry::CLASSES_ROOT;
 
