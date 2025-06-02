@@ -4,7 +4,7 @@ version = "0.0.1"
 edition = "2024"
 
 [features]
-java = ["jni", "x11rb"]
+java = ["dep:jni"]
 
 #[build-dependencies]
 #cbindgen = "0.29.0"
@@ -16,9 +16,6 @@ jni = { version = "0.21.1", optional = true }
 windows = { version = "0.61.1", features = ["Win32_Foundation", "Win32_System_Diagnostics_Debug", "Win32_System_Com", "Win32_System_Ole", "Win32_System_LibraryLoader", "Win32_System_SystemServices", "Win32_System_SystemInformation", "Win32_UI_Shell_Common", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse"] }
 windows-core = "0.61.0"
 windows-registry = "0.5.1"
-
-[target.'cfg(any(target_os = "linux", target_os = "freebsd", target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
-x11rb = { version = "0.13.1", optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.1"
