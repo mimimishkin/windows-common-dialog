@@ -1,4 +1,4 @@
-use jni::objects::{JClass, JObject, JString};
+use jni::objects::{JClass, JObject};
 use jni::sys::{jboolean, jint, jlong, jobject};
 use jni::JNIEnv;
 use std::ffi::c_void;
@@ -21,18 +21,12 @@ type WindowRes<T> = Result<T, AwtWindowError>;
 
 #[cfg(target_os = "windows")]
 mod win;
-#[cfg(target_os = "windows")]
-use win::*;
 
-#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd"))]
+#[cfg(all(target_family = "unix", not(target_os = "macos")))]
 mod x11;
-#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "dragonfly", target_os = "netbsd", target_os = "openbsd"))]
-use x11::*;
 
 #[cfg(target_os = "macos")]
 mod mac;
-#[cfg(target_os = "macos")]
-use mac::*;
 
 #[repr(C)]
 #[allow(non_camel_case_types, non_snake_case)]
@@ -139,27 +133,3 @@ pub extern "system" fn Java_dev_mimimishkin_common_chooser_dialog_NativeHelper_g
         }
     }
 }
-
-#[unsafe(no_mangle)]
-#[allow(non_snake_case)]
-pub extern "system" fn Java_dev_mimimishkin_common_chooser_dialog_NativeHelper_findWindowNativeHandle<'a>(
-    env: JNIEnv<'a>,
-    _: JClass<'a>,
-    title: JString<'a>,
-    x: jint,
-    y: jint,
-    match_position: jboolean,
-    width: jint,
-    height: jint,
-    match_size: jboolean,
-) -> jlong { unsafe {
-    let title = env.get_string_unchecked(&title).ok();
-    let title: Option<String> = title.map(|title| title.into());
-    let pos: Option<(i16, i16)> = (match_position != 0).then_some((x as i16, y as i16));
-    let size: Option<(u16, u16)> = (match_size != 0).then_some((width as u16, height as u16));
-
-    let title: Option<&str> = title.as_deref();
-    let window = find_window(title, &pos, &size);
-
-    window.unwrap_or_default()
-} }

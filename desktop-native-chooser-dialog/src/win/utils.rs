@@ -1,4 +1,3 @@
-use crate::ChooserDialogError;
 use std::ops::Deref;
 pub use windows::core::Result as WinRes;
 use windows::core::{GUID, HRESULT, HSTRING, PWSTR};
@@ -152,12 +151,6 @@ impl TypedItem for IShellItem {
 
     fn is_directory(&self) -> WinRes<bool> {
         unsafe { Ok(self.GetAttributes(SFGAO_FOLDER)?.contains(SFGAO_FOLDER)) }
-    }
-}
-
-impl From<windows::core::Error> for ChooserDialogError {
-    fn from(err: windows::core::Error) -> Self {
-        ChooserDialogError(err.message())
     }
 }
 

@@ -1,15 +1,17 @@
 //! This module provides a cross-platform file chooser dialog interface.
 //! It shouldn't be used directly, it's only for outer kotlin project.
 
-extern crate core;
+#[cfg(target_os = "windows")]
+pub mod win;
+#[cfg(all(feature = "java", target_os = "windows"))]
+pub use win::java::*;
 
 #[cfg(target_os = "macos")]
 pub mod mac;
-
-mod dialog;
-pub use dialog::*;
+#[cfg(all(feature = "java", target_os = "macos"))]
+pub use mac::java::*;
 
 #[cfg(feature = "java")]
-mod java;
+mod awt_window;
 #[cfg(feature = "java")]
-pub use java::*;
+pub use awt_window::*;

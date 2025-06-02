@@ -1,7 +1,7 @@
-use crate::dialog::win::file_filter::WinFileFilter;
-use crate::dialog::win::params::WinChooserDialogParams;
-use crate::dialog::win::utils::{create_item, create_item_in, load_string, ExtractName, LinkTarget, TypedItem, WinRes, HRESULT_CANCELLED};
-use crate::ChoosingMode::*;
+use crate::win::file_filter::WinFileFilter;
+use crate::win::params::ChoosingMode::{DirectoriesOnly, FilesAndDirectories, Saving};
+use crate::win::params::WinChooserDialogParams;
+use crate::win::utils::{create_item, create_item_in, load_string, ExtractName, LinkTarget, TypedItem, WinRes, HRESULT_CANCELLED};
 use std::cell::RefCell;
 use std::ops::{Deref, DerefMut};
 use windows::core::{implement, w, Interface, Ref, HSTRING, PCWSTR};
@@ -389,7 +389,7 @@ pub fn choose(params: &WinChooserDialogParams) -> WinRes<(Vec<IShellItem>, Optio
     // tell the dialog not to download files
     dialog.SetOptions(dialog.GetOptions()? | FOS_SUPPORTSTREAMABLEITEMS)?;
 
-    if let Some(guid) = params.guid {
+    if let Some(guid) = params.id {
         dialog.SetClientGuid(&guid)?;
     }
 
@@ -400,10 +400,6 @@ pub fn choose(params: &WinChooserDialogParams) -> WinRes<(Vec<IShellItem>, Optio
     if !params.filters.is_empty() {
         let types = params.filters.iter().map(WinFileFilter::to_comdlg_filterspec).collect::<Vec<_>>();
         dialog.SetFileTypes(&types)?;
-
-        if let Some(ext) = &params.default_extension {
-            dialog.SetDefaultExtension(ext)?;
-        }
     }
 
     if let Some(name) = &params.suggested_name {

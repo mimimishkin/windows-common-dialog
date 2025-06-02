@@ -1,14 +1,20 @@
-use crate::dialog::win::WinFileFilter;
-use crate::ChoosingMode;
+use crate::win::file_filter::WinFileFilter;
 use windows::core::{GUID, HSTRING};
 use windows::Win32::Foundation::HWND;
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum ChoosingMode {
+    Saving,
+    FilesOnly,
+    DirectoriesOnly,
+    FilesAndDirectories,
+}
+
 #[derive(Debug)]
 pub struct WinChooserDialogParams {
-    pub guid: Option<GUID>,
+    pub id: Option<GUID>,
     pub title: Option<HSTRING>,
     pub filters: Vec<WinFileFilter>,
-    pub default_extension: Option<HSTRING>,
     pub mode: ChoosingMode,
     pub multiple: bool,
     pub initial_directory: Option<HSTRING>,
