@@ -113,7 +113,7 @@ fn find_handle(env: &JNIEnv, window: JObject) -> WindowRes<i64> { unsafe {
 
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
-pub extern "system" fn Java_dev_mimimishkin_common_chooser_dialog_NativeHelper_getWindowNativeHandle<'a>(
+pub extern "system" fn Java_dev_mimimishkin_common_chooser_dialog_NativeHelper_getWindowNativeHandle0<'a>(
     mut env: JNIEnv<'a>,
     _: JClass<'a>,
     input: JObject<'a>
