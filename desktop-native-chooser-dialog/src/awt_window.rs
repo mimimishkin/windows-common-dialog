@@ -72,13 +72,6 @@ struct JAWT {
     SynthesizeWindowActivation: *mut c_void,
 }
 
-#[cfg(target_os = "windows")]
-#[link(name = "jawt", kind = "raw-dylib")]
-unsafe extern "system" {
-    fn JAWT_GetAWT(env: *mut jni::sys::JNIEnv, awt: *mut JAWT) -> jboolean;
-}
-
-#[cfg(not(target_os = "windows"))]
 #[link(name = "jawt", kind = "dylib")]
 unsafe extern "system" {
     fn JAWT_GetAWT(env: *mut jni::sys::JNIEnv, awt: *mut JAWT) -> jboolean;
