@@ -1,6 +1,3 @@
-//! This module provides a cross-platform file chooser dialog interface.
-//! It shouldn't be used directly, it's only for outer kotlin project.
-
 #[cfg(target_os = "windows")]
 pub mod win;
 #[cfg(all(feature = "java", target_os = "windows"))]
