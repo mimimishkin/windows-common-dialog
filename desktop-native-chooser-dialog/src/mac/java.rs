@@ -1,5 +1,3 @@
-use crate::utils::element_to_uttype;
-use crate::utils::with_main_thread;
 use jni::objects::{JClass, JObject, JObjectArray, JString, JValue};
 use jni::sys::{jboolean, jint, jlong, jsize};
 use jni::JNIEnv;
@@ -7,6 +5,9 @@ use objc2::rc::Retained;
 use objc2_app_kit::{NSApplication, NSWindow};
 use objc2_foundation::{NSArray, NSString, NSURL};
 use std::sync::Arc;
+use crate::mac::dialog::choose;
+use crate::mac::params::MacChooserDialogParams;
+use crate::mac::utils::{element_to_uttype, new_url, with_main_thread, ToString};
 
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -30,7 +31,7 @@ pub extern "system" fn Java_dev_mimimishkin_common_chooser_dialog_NativeHelper_s
         let element = JString::from(env.get_object_array_element(&filter, i as _).unwrap());
         let element: String = env.get_string_unchecked(&element).unwrap().into();
         element_to_uttype(&element)
-    }).collect::<NSArray<_>>();
+    }).collect::<Vec<_>>();
     let filter = NSArray::from_retained_slice(&filter);
     let glob_patterns = if use_glob_patterns != 0 {
         todo!()
@@ -70,7 +71,7 @@ pub extern "system" fn Java_dev_mimimishkin_common_chooser_dialog_NativeHelper_s
                 let j_selection = env.new_object_array(selection.len() as jsize, "java/lang/String", JObject::null()).unwrap();
                 for (i, url) in selection.iter().enumerate() {
                     let j_url = env.new_string(url.to_string()).unwrap();
-                    env.set_object_array_element(&j_selection, i as jsize, JValue::Object(&j_url)).unwrap();
+                    env.set_object_array_element(&j_selection, i as jsize, &j_url).unwrap();
                 }
 
                 env.call_method(
@@ -110,13 +111,13 @@ fn find_window_with_nested(
     for window in windows {
         let title_match = title.map(|title| unsafe { window.title().isEqualToString(title) }).unwrap_or_default();
 
-        if let Some((ref px, ref py)) = pos {
+        if let Some((px, py)) = pos {
             let bounds = window.frame();
             let cx = bounds.origin.x;
             let cy = bounds.origin.y;
             let mut error = (cx - px).abs() + (cy - py).abs();
 
-            if let Some((ref sw, ref sh)) = size {
+            if let Some((sw, sh)) = size {
                 let cw = bounds.size.width;
                 let ch = bounds.size.height;
                 error += (cw - sw).abs() + (ch - sh).abs();
@@ -167,23 +168,17 @@ pub extern "system" fn Java_dev_mimimishkin_common_chooser_dialog_NativeHelper_f
     max_depth: jint
 ) -> jlong { unsafe {
     let title = env.get_string_unchecked(&title).ok();
-    let title: Option<Retained<NSString>> = title.map(|title| NSString::from_str(title.into()));
+    let title: Option<String> = title.map(|title| title.into());
     let pos = (match_position != 0).then_some((x as f64, y as f64));
     let size = (match_size != 0).then_some((width as f64, height as f64));
 
     let window = with_main_thread(|mtm| {
+        let title: Option<Retained<NSString>> = title.map(|title| NSString::from_str(&title));
         let windows = NSApplication::sharedApplication(mtm).windows();
-        let res = find_window_with_nested(windows, title.as_deref(), &pos, &size, max_depth, 0);
+        find_window_with_nested(windows, title.as_deref(), &pos, &size, max_depth, 0)
+            .take_if(|(_, error)| title.is_some() || *error < 0.1)
+            .map(|(window, _)| window.as_ref() as *const NSWindow as isize)
+    }).flatten().unwrap_or_default();
 
-        res.and_then(|(window, error)| {
-            if title.is_some() || error < 0.1 {
-                Some(window)
-            } else {
-                None
-            }
-        })
-    }).flatten();
-
-    let prt = window.map(|w| w.as_ref() as *const _).unwrap_or_default();
-    prt as jlong
+    window as jlong
 } }

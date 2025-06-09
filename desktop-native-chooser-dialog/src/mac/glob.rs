@@ -35,13 +35,14 @@ fn match_glob(pat: &[char], text: &[char]) -> bool {
 
 #[derive(Debug)]
 struct GlobFilterDelegateIvars {
-    patterns: Vec<[char]>
+    patterns: Vec<Vec<char>>
 }
 
 impl GlobFilterDelegateIvars {
     fn new(elements: &[String]) -> Self {
         Self {
             patterns: elements
+                .into_iter()
                 .filter_map(|s| (!s.contains('/')).then(|| s.chars().collect()))
                 .collect()
         }
@@ -59,15 +60,15 @@ define_class!(
     unsafe impl NSOpenSavePanelDelegate for GlobFilterDelegate {
         #[unsafe(method(panel:shouldEnableURL:))]
         #[allow(non_snake_case)]
-        unsafe fn panel_shouldEnableURL(&self, _sender: &AnyObject, url: &NSURL) -> bool {
+        unsafe fn panel_shouldEnableURL(&self, _sender: &AnyObject, url: &NSURL) -> bool { unsafe {
             if let Some(name) = url.lastPathComponent() {
-                let patterns = &self.ivars().patterns
-                let name = autoreleasepool(|p| name.to_str(p).chars().collect())
+                let patterns = &self.ivars().patterns;
+                let name: Vec<char> = autoreleasepool(|p| name.to_str(p).chars().collect());
                 patterns.iter().any(|glob| match_glob(glob, &name))
             } else {
                 true
             }
-        }
+        } }
     }
 );
 

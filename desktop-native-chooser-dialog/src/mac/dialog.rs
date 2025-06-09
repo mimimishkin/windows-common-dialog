@@ -1,14 +1,31 @@
-use crate::mac::error::MacRes;
-use crate::{with_main_thread, GlobFilterDelegate, MacChooserDialogParams};
+use crate::mac::error::{MacDialogError, MacRes};
 use objc2::ClassType;
 use objc2::__framework_prelude::Retained;
-use objc2_app_kit::{NSModalResponse, NSModalResponseCancel, NSModalResponseOK, NSOpenPanel, NSSavePanel};
+use objc2_app_kit::{NSModalResponse, NSModalResponseCancel, NSModalResponseOK, NSOpenPanel, NSSavePanel, NSWindow};
 use objc2_foundation::NSURL;
 use std::sync::Arc;
+use crate::mac::glob::GlobFilterDelegate;
+use crate::mac::params::MacChooserDialogParams;
+use crate::mac::utils::with_main_thread;
 
 pub fn choose(params: Arc<MacChooserDialogParams>, callback: impl FnOnce(MacRes<(Vec<Retained<NSURL>>, Option<Retained<NSURL>>)>)) { unsafe {
     with_main_thread(|mtm| {
-        let (panel, callback): (&NSSavePanel, fn(NSModalResponse)) = if params.is_saver {
+        fn begin_panel(
+            panel: &NSSavePanel, 
+            owner: Option<&NSWindow>, 
+            callback: impl Fn(NSModalResponse) + Clone + 'static
+        ) {
+            unsafe {
+                let block = block2::StackBlock::new(callback);
+                if let Some(owner) = owner {
+                    panel.beginSheetModalForWindow_completionHandler(owner, &block);
+                } else {
+                    panel.beginWithCompletionHandler(&block);
+                }
+            }
+        }
+        
+        if params.is_saver {
             let panel = NSSavePanel::savePanel(mtm);
 
             panel.setTitle(params.title.as_deref());
@@ -18,22 +35,21 @@ pub fn choose(params: Arc<MacChooserDialogParams>, callback: impl FnOnce(MacRes<
                 panel.setNameFieldStringValue(suggested_name);
             }
 
-            let callback = |r: NSModalResponse| {
-                match r {
-                    NSModalResponseOK | NSModalResponseCancel => {
-                        let selection = panel.URL().into_iter().collect::<Vec<_>>();
-                        let last_folder = panel.directoryURL();
+            let callback = |r: NSModalResponse| match r {
+                1 /* NSModalResponseOK */ | 0 /* NSModalResponseCancel */ => {
+                    let selection = panel.URL().into_iter().collect::<Vec<_>>();
+                    let last_folder = panel.directoryURL();
 
-                        callback(Ok((selection, last_folder)));
-                    }
+                    callback(Ok((selection, last_folder)));
+                }
 
-                    code => {
-                        callback(Err(format!("NSSavePanel completed with code: {code}").into()));
-                    }
+                code => {
+                    let message = format!("NSSavePanel completed with code: {code}");
+                    callback(Err(MacDialogError(message)));
                 }
             };
 
-            (panel.as_ref(), callback)
+            begin_panel(panel.as_ref(), params.owner.as_deref(), callback);
         } else {
             let panel = NSOpenPanel::openPanel(mtm);
 
@@ -49,28 +65,21 @@ pub fn choose(params: Arc<MacChooserDialogParams>, callback: impl FnOnce(MacRes<
                 panel.setNameFieldStringValue(suggested_name);
             }
 
-            let callback = |r: NSModalResponse| {
-                match r {
-                    NSModalResponseOK | NSModalResponseCancel => {
-                        let selection = panel.URLs().into_iter().collect::<Vec<_>>();
-                        let last_folder = panel.directoryURL();
+            let callback = |r: NSModalResponse| match r {
+                1 /* NSModalResponseOK */ | 0 /* NSModalResponseCancel */ => {
+                    let selection = panel.URLs().into_iter().collect::<Vec<_>>();
+                    let last_folder = panel.directoryURL();
 
-                        callback(Ok((selection, last_folder)));
-                    }
+                    callback(Ok((selection, last_folder)));
+                }
 
-                    code => {
-                        callback(Err(format!("NSOpenPanel completed with code: {code}").into()));
-                    }
+                code => {
+                    let message = format!("NSOpenPanel completed with code: {code}");
+                    callback(Err(MacDialogError(message)));
                 }
             };
 
-            (panel.as_super(), callback)
+            begin_panel(panel.as_ref(), params.owner.as_deref(), callback);
         };
-
-        if let Some(ref owner) = params.owner {
-            panel.beginSheetModalForWindow_completionHandler(owner, &callback);
-        } else {
-            panel.beginWithCompletionHandler(&callback);
-        }
     });
 } }

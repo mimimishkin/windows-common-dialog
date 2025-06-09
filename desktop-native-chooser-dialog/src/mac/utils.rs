@@ -6,7 +6,7 @@ use objc2_foundation::{NSString, NSURL};
 use objc2_uniform_type_identifiers::UTType;
 use std::path::Path;
 
-pub fn with_main_thread<R>(block: impl FnOnce(MainThreadMarker) -> R) -> Option<R> {
+pub fn with_main_thread<R: Send>(block: impl FnOnce(MainThreadMarker) -> R + Send) -> Option<R> {
     if let Some(mtm) = MainThreadMarker::new() {
         Some(block(mtm))
     } else {
