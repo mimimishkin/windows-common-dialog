@@ -3,7 +3,7 @@ use crate::win::file_filter::WinFileFilter;
 use crate::win::folders::load_folders;
 use crate::win::mime::load_extensions;
 use crate::win::params::{ChoosingMode, WinChooserDialogParams};
-use crate::win::utils::{with_com, ExtractName};
+use crate::win::utils::{with_com, ShellItemEx};
 use jni::objects::{JClass, JObject, JObjectArray, JString};
 use jni::sys::{jboolean, jint, jlong, jobject, jobjectArray, jsize};
 use jni::JNIEnv;

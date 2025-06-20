@@ -8,3 +8,6 @@ mod fnf_events;
 
 #[cfg(feature = "java")]
 pub mod java;
+
+#[cfg(feature = "c_binding")]
+pub mod c_binding;

@@ -2,12 +2,13 @@ use crate::win::file_filter::WinFileFilter;
 use windows::core::{GUID, HSTRING};
 use windows::Win32::Foundation::HWND;
 
+#[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ChoosingMode {
-    Saving,
-    FilesOnly,
-    DirectoriesOnly,
-    FilesAndDirectories,
+    Saving = 0,
+    FilesOnly = 1,
+    DirectoriesOnly = 2,
+    FilesAndDirectories = 3,
 }
 
 #[derive(Debug)]

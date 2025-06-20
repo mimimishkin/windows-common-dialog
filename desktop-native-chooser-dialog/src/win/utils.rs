@@ -2,12 +2,14 @@ use std::ops::Deref;
 pub use windows::core::Result as WinRes;
 use windows::core::{GUID, HRESULT, HSTRING, PWSTR};
 use windows::Win32::Foundation::{ERROR_CANCELLED, ERROR_PATH_NOT_FOUND, HMODULE, S_FALSE, S_OK};
+use windows::Win32::Storage::EnhancedStorage::{PKEY_ContentType, PKEY_Size};
 use windows::Win32::System::Com::{CoInitializeEx, CoTaskMemFree, CoUninitialize, COINIT, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE};
 use windows::Win32::System::SystemServices::{SFGAO_FOLDER, SFGAO_STREAM};
-use windows::Win32::UI::Shell::{BHID_EnumItems, BHID_SFUIObject, IEnumShellItems, IShellItem, IShellLinkW, PathIsRelativeW, SHCreateItemFromParsingName, SHCreateShellItem, SHGetKnownFolderPath, KF_FLAG_DEFAULT, SIGDN, SIGDN_DESKTOPABSOLUTEPARSING, SIGDN_PARENTRELATIVE, SIGDN_PARENTRELATIVEEDITING};
+use windows::Win32::UI::Shell::{BHID_EnumItems, BHID_SFUIObject, IEnumShellItems, IShellItem, IShellItem2, IShellLinkW, PathIsRelativeW, SHCreateItemFromParsingName, SHCreateShellItem, SHGetKnownFolderPath, KF_FLAG_DEFAULT, SIGDN, SIGDN_DESKTOPABSOLUTEPARSING, SIGDN_PARENTRELATIVE, SIGDN_PARENTRELATIVEEDITING};
 use windows::Win32::UI::WindowsAndMessaging::LoadStringW;
+use windows_core::Interface;
 
-pub trait ExtractName {
+pub trait ShellItemEx {
     fn get_display_name(&self, name_type: SIGDN) -> WinRes<HSTRING>;
     
     fn relative_name(&self) -> HSTRING {
@@ -21,21 +23,36 @@ pub trait ExtractName {
     fn absolute_parsing_name(&self) -> HSTRING {
         self.get_display_name(SIGDN_DESKTOPABSOLUTEPARSING).expect("IShellItem must provide SIGDN_DESKTOPABSOLUTEPARSING")
     }
+
+    fn size(&self) -> WinRes<u64>;
+
+    fn content_type(&self) -> WinRes<String>;
 }
 
-impl ExtractName for IShellItem {
+impl ShellItemEx for IShellItem {
     fn get_display_name(&self, name_type: SIGDN) -> WinRes<HSTRING> { unsafe {
         let name = self.GetDisplayName(name_type)?;
         let string = HSTRING::from_wide(name.as_wide());
         CoTaskMemFree(Some(name.as_ptr() as _));
         Ok(string)
-    }
-} }
+    } }
+
+    fn size(&self) -> WinRes<u64> { unsafe {
+        let item: IShellItem2 = self.cast()?;
+        item.GetUInt64(&PKEY_Size)
+    } }
+
+    fn content_type(&self) -> WinRes<String> { unsafe {
+        let item: IShellItem2 = self.cast()?;
+        let result = item.GetString(&PKEY_ContentType)?;
+        Ok(result.to_string()?)
+    } }
+}
 
 pub const HRESULT_CANCELLED: HRESULT = ERROR_CANCELLED.to_hresult();
 
-pub fn with_com<T, F: FnOnce() -> T>(f: F) -> T { unsafe {
-    let init_com = |dw_co_init: COINIT| -> bool {
+pub fn init_com(dw_co_init: COINIT) -> bool {
+    unsafe {
         match CoInitializeEx(None, dw_co_init) {
             // Successful local initialization (S_OK) or was already initialized
             // (S_FALSE) but still needs uninit
@@ -47,16 +64,24 @@ pub fn with_com<T, F: FnOnce() -> T>(f: F) -> T { unsafe {
             // Any other result is impossible
             _ => unreachable!("Failed to initialize COM")
         }
-    };
+    }
+}
 
+pub fn quit_com() {
+    unsafe {
+        CoUninitialize();
+    }
+}
+
+pub fn with_com<T, F: FnOnce() -> T>(f: F) -> T {
     let need_quit = init_com(COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
     let result = f();
-    if need_quit { 
-        CoUninitialize(); 
+    if need_quit {
+        quit_com()
     }
     
     result
-} }
+}
 
 pub fn create_item(absolute_parsing_name: &HSTRING) -> WinRes<IShellItem> {
     let item: IShellItem = unsafe { SHCreateItemFromParsingName(absolute_parsing_name, None) }?;
