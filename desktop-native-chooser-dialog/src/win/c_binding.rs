@@ -1,13 +1,13 @@
 use crate::win::dialog::choose;
 use crate::win::file_filter::WinFileFilter;
 use crate::win::folders::load_folders;
-use crate::win::mime::load_extensions;
 use crate::win::params::{ChoosingMode, WinChooserDialogParams};
-use crate::win::utils;
 use crate::win::utils::ShellItemEx;
+use crate::win::{mime, utils};
 use libc::size_t;
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::ptr;
+use std::ptr::null_mut;
 use windows::core::{GUID, HSTRING};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE};
@@ -56,42 +56,9 @@ impl StringArray {
 }
 
 #[repr(C)]
-pub struct Table {
-    pub rows: *mut *mut StringArray,
-    pub rows_count: size_t,
-}
-
-impl Table {
-    fn init(rows_count: usize) -> *mut Self {
-        unsafe {
-            let table = libc::malloc(size_of::<Table>()) as *mut Table;
-            
-            let rows_ptr = libc::malloc(size_of::<*mut StringArray>() * rows_count) as *mut *mut StringArray;
-            
-            (*table).rows = rows_ptr;
-            (*table).rows_count = rows_count;
-
-            table
-        }
-    }
-    
-    unsafe fn set(&mut self, index: usize, value: *mut StringArray) {
-        unsafe {
-            *self.rows.add(index) = value;
-        }
-    }
-    
-    unsafe fn get(&self, index: usize) -> *mut StringArray {
-        unsafe {
-            *self.rows.add(index)
-        }
-    }
-}
-
-#[repr(C)]
-pub enum Result<T> {
-    Ok(T),
-    Err(*mut c_char),
+pub struct CResult<T> {
+    pub err: *mut c_char,
+    pub result: *mut T,
 }
 
 #[repr(C)]
@@ -110,8 +77,10 @@ pub extern "C" fn quit_com() {
     utils::quit_com()
 }
 
+/// # Safety
+/// Function expects a valid pointer to a Rust string.
 #[unsafe(no_mangle)]
-pub extern "C" fn free_string(string: *mut c_char) {
+pub unsafe extern "C" fn free_string(string: *mut c_char) {
     if string.is_null() {
         return;
     }
@@ -121,8 +90,10 @@ pub extern "C" fn free_string(string: *mut c_char) {
     }
 }
 
+/// # Safety
+/// Function expects a valid pointer to a `StringArray`.
 #[unsafe(no_mangle)]
-pub extern "C" fn free_string_array(array: *mut StringArray) {
+pub unsafe extern "C" fn free_string_array(array: *mut StringArray) {
     if array.is_null() {
         return;
     }
@@ -136,23 +107,12 @@ pub extern "C" fn free_string_array(array: *mut StringArray) {
     }
 }
 
+/// # Safety
+/// Function expects valid pointers to `title`, `filters`, `initial_directory` and `suggested_name`
+/// C strings.
+/// Also, a caller must free the returned `StringArray` using `free_string_array`.
 #[unsafe(no_mangle)]
-pub extern "C" fn free_table(table: *mut Table) {
-    if table.is_null() {
-        return;
-    }
-
-    unsafe {        
-        for i in 0..(*table).rows_count {
-            free_string_array((*table).get(i));
-        }
-        libc::free((*table).rows as _);
-        libc::free(table as _);
-    }
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn show_dialog(
+pub unsafe extern "C" fn show_dialog(
     id_part1: u64,
     id_part2: u64,
     title: *const c_char,
@@ -163,7 +123,7 @@ pub extern "C" fn show_dialog(
     initial_directory: *const c_char,
     suggested_name: *const c_char,
     owner: *const c_void,
-) -> *mut StringArray { unsafe {
+) -> CResult<StringArray> { unsafe {
     let id = (id_part1 != 0 || id_part2 != 0).then(|| GUID::from_u128((id_part1 as u128) << 64 | (id_part2 as u128)));
 
     let title: Option<HSTRING> = (!title.is_null()).then(|| CStr::from_ptr(title).to_str().unwrap().into());
@@ -216,14 +176,22 @@ pub extern "C" fn show_dialog(
             }
             (*result).set_all(1, selection.into_iter().map(|item| item.absolute_parsing_name().to_string()));
 
-            result
+            CResult {
+                err: null_mut(),
+                result,
+            }
         }
-        Err(_) => ptr::null_mut(),
+        Err(err) => CResult {
+            err: CString::new(err.message()).unwrap().into_raw(),
+            result: null_mut(),
+        },
     }
 } }
 
+/// # Safety
+/// A caller must free the returned `StringArray` using `free_string_array`.
 #[unsafe(no_mangle)]
-pub extern "C" fn well_known_directories() -> *mut StringArray { unsafe {
+pub unsafe extern "C" fn well_known_directories() -> *mut StringArray { unsafe {
     let result = load_folders();
 
     match result {
@@ -236,34 +204,44 @@ pub extern "C" fn well_known_directories() -> *mut StringArray { unsafe {
     }
 } }
 
+/// # Safety
+/// Function expects a valid pointer to `extension` C string.
+/// Also, a caller must free the returned C string using `free_string`.
 #[unsafe(no_mangle)]
-pub extern "C" fn mime_table() -> *mut Table { unsafe {
-    let result = load_extensions();
+pub unsafe extern "C" fn type_for_extension(extension: *const c_char) -> *mut c_char { unsafe {
+    let extension = CStr::from_ptr(extension).to_str().unwrap();
+    let result = mime::type_for_extension(extension);
 
     match result {
-        Ok(table) => {
-            let rows = table.len();
-            if rows == 0 {
-                return ptr::null_mut();
-            }
-            
-            let result = Table::init(table.len());
+        Ok(Some(mime_type)) => CString::new(mime_type).unwrap().into_raw(),
+        _ => ptr::null_mut(),
+    }
+} }
 
-            for (i, (mime, extensions)) in table.into_iter().enumerate() {
-                let row = StringArray::init(extensions.len() + 1); // +1 for the MIME type
-                (*row).set(0, mime);
-                (*row).set_all(1, extensions.into_iter());
-                (*result).set(i, row);
-            }
 
-            result
+/// # Safety
+/// Function expects valid pointers to `mime_type` and `mime_subtype` C strings.
+/// Also, a caller must free the returned `StringArray` using `free_string_array`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn extensions_for_type(mime_type: *const c_char, mime_subtype: *const c_char) -> *mut StringArray { unsafe {
+    let mime_type = CStr::from_ptr(mime_type).to_str().unwrap();
+    let mime_subtype = CStr::from_ptr(mime_subtype).to_str().unwrap();
+    let result = mime::extensions_for_type(mime_type, mime_subtype);
+
+    match result {
+        Ok(extensions) => {
+            let array = StringArray::init(extensions.len());
+            (*array).set_all(0, extensions.into_iter());
+            array
         }
         Err(_) => ptr::null_mut(),
     }
 } }
 
+/// # Safety
+/// Function expects a valid pointer to an `IShellItem2` object.
 #[unsafe(no_mangle)]
-pub extern "C" fn get_item_size(item: *const c_void) -> i64 {
+pub unsafe extern "C" fn get_item_size(item: *const c_void) -> i64 {
     if item.is_null() {
         return 0;
     }
@@ -276,8 +254,10 @@ pub extern "C" fn get_item_size(item: *const c_void) -> i64 {
     }
 }
 
+/// # Safety
+/// Function expects a valid pointer to an `IShellItem2` object.
 #[unsafe(no_mangle)]
-pub extern "C" fn get_item_type(item: *const c_void) -> *mut c_char {
+pub unsafe extern "C" fn get_item_type(item: *const c_void) -> *mut c_char {
     if item.is_null() {
         return ptr::null_mut();
     }

@@ -1,7 +1,7 @@
 use crate::win::dialog::choose;
 use crate::win::file_filter::WinFileFilter;
 use crate::win::folders::load_folders;
-use crate::win::mime::load_extensions;
+use crate::win::mime::{extensions_for_type, type_for_extension};
 use crate::win::params::{ChoosingMode, WinChooserDialogParams};
 use crate::win::utils::{with_com, ShellItemEx};
 use jni::objects::{JClass, JObject, JObjectArray, JString};
@@ -86,7 +86,7 @@ pub extern "system" fn Java_dev_mimimishkin_common_chooser_dialog_NativeHelper_s
                 j_result.into_raw()
             }
             Err(err) => {
-                env.throw_new("java/lang/Exception", err.message()).unwrap();
+                env.throw_new("dev/mimimishkin/common/chooser/dialog/exception/ChooserDialogException", err.message()).unwrap();
                 std::ptr::null_mut() as jobject
             }
         }
@@ -95,26 +95,50 @@ pub extern "system" fn Java_dev_mimimishkin_common_chooser_dialog_NativeHelper_s
 
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
-pub extern "system" fn Java_dev_mimimishkin_common_chooser_dialog_NativeHelper_loadMimeTable0<'a>(
+pub extern "system" fn Java_dev_mimimishkin_common_chooser_dialog_NativeHelper_extensionToMimeTypes0<'a>(
     mut env: JNIEnv<'a>,
     _class: JClass<'a>,
+    extension: JString<'a>,
 ) -> jobjectArray {
-    match load_extensions() {
-        Ok(table) => {
-            let j_table = env.new_object_array(table.len() as _, "[Ljava/lang/String;", JObject::null()).unwrap();
-            for (i, (key, extensions)) in table.into_iter().enumerate() {
-                let entry = env.new_object_array(extensions.len() as jsize + 1, "java/lang/String", JObject::null()).unwrap();
+    let extension: String = unsafe { env.get_string_unchecked(&extension) }.unwrap().into();
+    
+    match type_for_extension(&extension) {
+        Ok(Some(mime_type)) => {
+            let j_array = env.new_object_array(1, "java/lang/String", JObject::null()).unwrap();
+            let j_mime_type = env.new_string(mime_type).unwrap();
+            env.set_object_array_element(&j_array, 0, j_mime_type).unwrap();
+            j_array.into_raw()
+        }
+        Ok(None) => {
+            let j_array = env.new_object_array(0, "java/lang/String", JObject::null()).unwrap();
+            j_array.into_raw()
+        }
+        Err(err) => {
+            env.throw_new("java/lang/Exception", err.message()).unwrap();
+            std::ptr::null_mut() as jobject
+        }
+    }
+}
 
-                let j_key = env.new_string(key).unwrap();
-                env.set_object_array_element(&entry, 0, j_key).unwrap();
-                for (j, ext) in extensions.into_iter().enumerate() {
-                    let j_value = env.new_string(ext).unwrap();
-                    env.set_object_array_element(&entry, (j + 1) as jsize, j_value).unwrap();
-                }
-
-                env.set_object_array_element(&j_table, i as jsize, entry).unwrap();
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub extern "system" fn Java_dev_mimimishkin_common_chooser_dialog_NativeHelper_mimeTypeToExtensions0<'a>(
+    mut env: JNIEnv<'a>,
+    _class: JClass<'a>,
+    mime_type: JString<'a>,
+    mime_subtype: JString<'a>,
+) -> jobjectArray {
+    let mime_type: String = unsafe { env.get_string_unchecked(&mime_type) }.unwrap().into();
+    let mime_subtype: String = unsafe { env.get_string_unchecked(&mime_subtype) }.unwrap().into();
+    
+    match extensions_for_type(&mime_type, &mime_subtype) {
+        Ok(extensions) => {
+            let j_array = env.new_object_array(extensions.len() as jsize, "java/lang/String", JObject::null()).unwrap();
+            for (i, ext) in extensions.into_iter().enumerate() {
+                let j_ext = env.new_string(ext).unwrap();
+                env.set_object_array_element(&j_array, i as jsize, j_ext).unwrap();
             }
-            j_table.into_raw()
+            j_array.into_raw()
         }
         Err(err) => {
             env.throw_new("java/lang/Exception", err.message()).unwrap();
@@ -164,9 +188,7 @@ extern "system" fn find_window_proc(hwnd: HWND, lparam: LPARAM) -> BOOL { unsafe
     let title_match = info.title.map(|title| {
         let title_len = title.len();
         let len = GetWindowTextLengthW(hwnd) as usize;
-        if len != title_len {
-            false
-        } else if title_len != 0 && GetWindowTextW(hwnd, info.buffer) == 0 {
+        if (len != title_len) || (title_len != 0 && GetWindowTextW(hwnd, info.buffer) == 0) {
             false
         } else {
             title.deref() == &info.buffer[..len]
@@ -225,11 +247,11 @@ pub extern "system" fn Java_dev_mimimishkin_common_chooser_dialog_NativeHelper_f
 ) -> jlong { unsafe {
     let title = env.get_string_unchecked(&title).ok();
     let title: Option<String> = title.map(|title| title.into());
-    let title: Option<HSTRING> = title.map(|title| HSTRING::from(title));
-    let left_top = (match_position != 0).then_some((x as i32, y as i32));
+    let title: Option<HSTRING> = title.map(HSTRING::from);
+    let left_top = (match_position != 0).then_some((x, y));
     let right_bottom = (match_size != 0).then(|| {
         let (x, y) = left_top.unwrap();
-        (x + width as i32, y + height as i32)
+        (x + width, y + height)
     });
 
     let hwnd = with_com(|| {

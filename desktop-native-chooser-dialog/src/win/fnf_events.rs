@@ -1,4 +1,4 @@
-use crate::win::utils::{create_item_in, load_string, LinkTarget, ShellItemEx, TypedItem, WinRes};
+use crate::win::utils::{create_item_in, load_string, ShellItemEx, WinRes};
 use std::cell::RefCell;
 use std::ops::{Deref, DerefMut};
 use windows::core::{implement, w, Interface, Ref, HSTRING, PCWSTR};

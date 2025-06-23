@@ -24,9 +24,33 @@ pub trait ShellItemEx {
         self.get_display_name(SIGDN_DESKTOPABSOLUTEPARSING).expect("IShellItem must provide SIGDN_DESKTOPABSOLUTEPARSING")
     }
 
+    fn is_file(&self) -> WinRes<bool>;
+
+    fn is_directory(&self) -> WinRes<bool>;
+
     fn size(&self) -> WinRes<u64>;
 
     fn content_type(&self) -> WinRes<String>;
+    
+    fn iter_children(&self) -> WinRes<ChildrenIter>;
+    
+    fn link_target(&self) -> WinRes<IShellItem>;
+}
+
+pub struct ChildrenIter {
+    enum_items: IEnumShellItems,
+}
+
+impl Iterator for ChildrenIter {
+    type Item = IShellItem;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        unsafe {
+            let fetched = &mut [None; 1];
+            self.enum_items.Next(fetched, None).ok()?;
+            fetched[0].take()
+        }
+    }
 }
 
 impl ShellItemEx for IShellItem {
@@ -37,6 +61,14 @@ impl ShellItemEx for IShellItem {
         Ok(string)
     } }
 
+    fn is_file(&self) -> WinRes<bool> {
+        unsafe { Ok(self.GetAttributes(SFGAO_STREAM)?.contains(SFGAO_STREAM)) }
+    }
+
+    fn is_directory(&self) -> WinRes<bool> {
+        unsafe { Ok(self.GetAttributes(SFGAO_FOLDER)?.contains(SFGAO_FOLDER)) }
+    }
+
     fn size(&self) -> WinRes<u64> { unsafe {
         let item: IShellItem2 = self.cast()?;
         item.GetUInt64(&PKEY_Size)
@@ -46,6 +78,18 @@ impl ShellItemEx for IShellItem {
         let item: IShellItem2 = self.cast()?;
         let result = item.GetString(&PKEY_ContentType)?;
         Ok(result.to_string()?)
+    } }
+
+    fn iter_children(&self) -> WinRes<ChildrenIter> {
+        let enumerate: IEnumShellItems = unsafe { self.BindToHandler(None, &BHID_EnumItems) }?;
+        Ok(ChildrenIter { enum_items: enumerate })
+    }
+
+    fn link_target(&self) -> WinRes<IShellItem> { unsafe {
+        let link: IShellLinkW = self.BindToHandler(None, &BHID_SFUIObject)?;
+        let target_id = link.GetIDList()?;
+        let target = SHCreateShellItem(None, None, target_id)?;
+        Ok(target)
     } }
 }
 
@@ -114,68 +158,12 @@ pub fn create_item_in(folder: &IShellItem, name_or_path: &HSTRING) -> WinRes<ISh
     travel_to_item(folder, name_or_path)
 } }
 
-pub struct ChildrenIter {
-    enum_items: IEnumShellItems,
-}
-
-impl Iterator for ChildrenIter {
-    type Item = IShellItem;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        unsafe {
-            let fetched = &mut [None; 1];
-            self.enum_items.Next(fetched, None).ok()?;
-            fetched[0].take()
-        }
-    }
-}
-
-pub trait IterChildren {
-    fn iter_children(&self) -> WinRes<ChildrenIter>;
-}
-
-impl IterChildren for IShellItem {
-    fn iter_children(&self) -> WinRes<ChildrenIter> {
-        let enumerate: IEnumShellItems = unsafe { self.BindToHandler(None, &BHID_EnumItems) }?;
-        Ok(ChildrenIter { enum_items: enumerate })
-    }
-}
-
 pub fn load_string(module: HMODULE, id: u32, buffer: &mut [u16]) -> WinRes<usize> {
     let pwstr = PWSTR(buffer.as_mut_ptr());
     let res = unsafe { LoadStringW(Some(module.into()), id, pwstr, buffer.len() as _) };
     match res {
         -1 | 0 => Err(windows::core::Error::from_win32()),
         len => Ok(len as usize)
-    }
-}
-
-pub trait LinkTarget {
-    fn link_target(&self) -> WinRes<IShellItem>;
-}
-
-impl LinkTarget for IShellItem {
-    fn link_target(&self) -> WinRes<IShellItem> { unsafe {
-        let link: IShellLinkW = self.BindToHandler(None, &BHID_SFUIObject)?;
-        let target_id = link.GetIDList()?;
-        let target = SHCreateShellItem(None, None, target_id)?;
-        Ok(target)
-    }
-} }
-
-pub trait TypedItem {
-    fn is_file(&self) -> WinRes<bool>;
-    
-    fn is_directory(&self) -> WinRes<bool>;
-}
-
-impl TypedItem for IShellItem {
-    fn is_file(&self) -> WinRes<bool> {
-        unsafe { Ok(self.GetAttributes(SFGAO_STREAM)?.contains(SFGAO_STREAM)) }
-    }
-
-    fn is_directory(&self) -> WinRes<bool> {
-        unsafe { Ok(self.GetAttributes(SFGAO_FOLDER)?.contains(SFGAO_FOLDER)) }
     }
 }
 
