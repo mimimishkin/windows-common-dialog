@@ -9,7 +9,6 @@ use windows::Win32::System::Diagnostics::Debug::{
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::WindowsAndMessaging::LoadStringW;
 use windows::core::{Error, HSTRING, PCWSTR, PWSTR};
-use windows_core::HRESULT;
 use crate::utils::WinRes;
 
 /// String resource IDs used by the dialogs.

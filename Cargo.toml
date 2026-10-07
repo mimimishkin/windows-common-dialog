@@ -1,10 +1,17 @@
 [package]
 name = "windows-common-dialog"
-version = "0.0.1"
+version = "0.1.0"
 edition = "2024"
+authors = ["Mimimishkin <printf.mika@gmail.com>"]
+description = "Wrapper for Windows file chooser dialog with files&folders mode"
+license = "MIT"
+repository = "https://github.com/mimimishkin/windows-common-dialog"
+readme = "README.md"
+keywords = ["windows", "dialog"]
+categories = ["gui", "os::windows-apis"]
 
 [dependencies]
-windows = { version = "0.62", features = [
+windows = { version = "0.62.2", features = [
     "Win32_Foundation",
     "Win32_Storage_EnhancedStorage",
     "Win32_System_Com",
@@ -17,5 +24,5 @@ windows = { version = "0.62", features = [
     "Win32_UI_Shell_Common",
     "Win32_UI_WindowsAndMessaging",
 ] }
-windows-core = "0.62"
-windows-registry = "0.6"
+windows-core = "0.100.0"
+windows-registry = "0.100.0"
